@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block content %}
+<div class="page-head">
+    <h1>{{ page_title }}</h1>
+    <p>{{ subtitle }}</p>
+</div>
+
+{% for s in sections %}
+<section class="panel mb-4">
+    <h2 class="section-heading mb-1">{{ s.title }}</h2>
+    {% if s.note %}<div class="text-muted small mb-2">{{ s.note }}</div>{% endif %}
+
+    {% if s.rows %}
+    <div class="table-responsive mt-3">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>{% for c in s.columns %}<th>{{ c|replace('_', ' ')|capitalize }}</th>{% endfor %}</tr>
+            </thead>
+            <tbody>
+                {% for r in s.rows %}
+                <tr>
+                    {% for c in s.columns %}
+                    <td>{{ r[c] if r[c] is not none else '—' }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted mt-3 mb-0">Nothing to show: no rows match this report.</p>
+    {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

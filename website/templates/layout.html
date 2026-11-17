@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Library{% endblock %} | Book Haven</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+
+    <style>
+        body { background:#f7f5ef; color:#202c40; }
+        .navbar-library { background:#17243a; padding:18px 0; }
+        .brand { color:white; font-size:1.35rem; font-weight:800; }
+        .brand span { color:#d5b77e; }
+        .btn-gold { background:#c7a56b; border-color:#c7a56b; color:#17243a; border-radius:10px; }
+        .btn-library { background:#17243a; border-color:#17243a; color:white; border-radius:10px; }
+        .btn-library:hover { background:#2d405a; color:white; }
+        .page-head { margin:32px 0 22px; }
+        .page-head h1 { font-weight:800; color:#17243a; margin-bottom:4px; }
+        .page-head p { color:#788191; margin:0; }
+        .panel { background:white; border:1px solid #ece8df; border-radius:16px; padding:24px; }
+        .section-heading { font-weight:800; color:#17243a; font-size:1.15rem; }
+        .site-footer { border-top:1px solid #e5e0d5; color:#7d8490; padding:24px 0; margin-top:40px; }
+    </style>
+</head>
+
+<body>
+<nav class="navbar-library">
+    <div class="container d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="brand">BOOK <span>HAVEN</span> 📚</div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ url_for('books') }}" class="btn btn-outline-light btn-sm">Library</a>
+            <a href="{{ url_for('search_books') }}" class="btn btn-outline-light btn-sm">Search</a>
+            <a href="{{ url_for('catalogue') }}" class="btn btn-outline-light btn-sm">Catalogue</a>
+            <a href="{{ url_for('reports') }}" class="btn btn-outline-light btn-sm">Reports</a>
+            <a href="{{ url_for('loans') }}" class="btn btn-outline-light btn-sm">Loans</a>
+            <a href="{{ url_for('most_borrowed') }}" class="btn btn-outline-light btn-sm">Most borrowed</a>
+            <a href="{{ url_for('authors_books') }}" class="btn btn-outline-light btn-sm">Authors</a>
+            <a href="{{ url_for('todos') }}" class="btn btn-outline-light btn-sm">To-Do</a>
+            {% if is_admin %}
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-gold btn-sm">Admin</a>
+            {% endif %}
+            <a href="{{ url_for('logout') }}" class="btn btn-gold btn-sm">Log out</a>
+        </div>
+    </div>
+</nav>
+
+<main class="container pb-4">
+    {% block content %}{% endblock %}
+    <footer class="site-footer text-center">Book Haven · Your stories, beautifully organized.</footer>
+</main>
+</body>
+</html>

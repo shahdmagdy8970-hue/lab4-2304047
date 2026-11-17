@@ -266,7 +266,7 @@ def author_errors(name, country):
     return errors
 
 
-def book_errors(title, price, author_id):
+def book_errors(title, price, author_id, publisher_id=1, category_id=1, publish_year=""):
     errors = []
     if not title:
         errors.append("Title is required")
@@ -280,6 +280,13 @@ def book_errors(title, price, author_id):
         errors.append("Price must be a number")
     if not author_id or author_id < 1:
         errors.append("Author is required")
+    if not publisher_id or publisher_id < 1:
+        errors.append("Publisher is required")
+    if not category_id or category_id < 1:
+        errors.append("Category is required")
+    if publish_year:
+        if not publish_year.isdigit() or not 1901 <= int(publish_year) <= 2155:
+            errors.append("Publish year must be between 1901 and 2155")
     return errors
 
 
@@ -334,16 +341,21 @@ def books():
                     title = form.get("title", "").strip()
                     price = form.get("price", "").strip()
                     author_id = form.get("author_id", type=int, default=0)
-                    errors = book_errors(title, price, author_id)
+                    publisher_id = form.get("publisher_id", type=int, default=0)
+                    category_id = form.get("category_id", type=int, default=0)
+                    publish_year = form.get("publish_year", "").strip()
+                    errors = book_errors(title, price, author_id, publisher_id, category_id, publish_year)
                     if not errors:
                         try:
                             cur.execute(
-                                "UPDATE book SET title = %s, price = %s, author_id = %s "
+                                "UPDATE book SET title = %s, price = %s, publish_year = %s, "
+                                "author_id = %s, publisher_id = %s, category_id = %s "
                                 "WHERE book_id = %s",
-                                (title, float(price), author_id, bid),
+                                (title, float(price), publish_year or None,
+                                 author_id, publisher_id, category_id, bid),
                             )
                         except pymysql.err.IntegrityError:
-                            errors.append("This author does not exist")
+                            errors.append("This author, publisher or category does not exist")
 
                 elif kind == "delete_book":
                     bid = form.get("book_id", type=int, default=0)
@@ -380,7 +392,10 @@ def books():
                     title = form.get("title", "").strip()
                     price = form.get("price", "").strip()
                     author_id = form.get("author_id", type=int, default=0)
-                    errors = book_errors(title, price, author_id)
+                    publisher_id = form.get("publisher_id", type=int, default=0)
+                    category_id = form.get("category_id", type=int, default=0)
+                    publish_year = form.get("publish_year", "").strip()
+                    errors = book_errors(title, price, author_id, publisher_id, category_id, publish_year)
                     cover = None
                     if not errors:
                         cover, image_error = save_image("cover")
@@ -389,12 +404,14 @@ def books():
                     if not errors:
                         try:
                             cur.execute(
-                                "INSERT INTO book (title, price, author_id, cover) "
-                                "VALUES (%s, %s, %s, %s)",
-                                (title, float(price), author_id, cover),
+                                "INSERT INTO book (title, price, publish_year, author_id, "
+                                "publisher_id, category_id, cover) "
+                                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                                (title, float(price), publish_year or None, author_id,
+                                 publisher_id, category_id, cover),
                             )
                         except pymysql.err.IntegrityError:
-                            errors.append("This author does not exist")
+                            errors.append("This author, publisher or category does not exist")
 
                 elif kind == "set_featured":
                     bid = form.get("book_id", type=int, default=0)
@@ -515,8 +532,14 @@ def books():
             )
             author_rows = cur.fetchall()
 
+            cur.execute("SELECT publisher_id, name FROM publisher ORDER BY name")
+            publisher_rows = cur.fetchall()
+            cur.execute("SELECT category_id, name FROM category ORDER BY name")
+            category_rows = cur.fetchall()
+
             cur.execute(
                 "SELECT b.book_id, b.title, b.price, b.author_id, b.cover, "
+                "b.publisher_id, b.category_id, b.publish_year, "
                 "a.name AS author_name, "
                 "EXISTS (SELECT 1 FROM favorites f WHERE f.book_id = b.book_id "
                 "AND f.user_id = %s) AS is_favorite, "
@@ -544,6 +567,8 @@ def books():
         "books.html",
         books=book_rows,
         authors=author_rows,
+        publishers=publisher_rows,
+        categories=category_rows,
         errors=errors,
         form=form,
         stats=stats,
@@ -638,6 +663,219 @@ def admin_dashboard():
         recent_books=recent_books,
         is_admin=True
     )
+
+
+# =====================================================================
+# Lab 4 - Part II: search pages (F2.1 - F2.6)
+# Every page is one simple SELECT per table; the same SQL is in problem2_Queries.sql.
+# =====================================================================
+def run_select(sql, params=()):
+    """Run a SELECT with placeholders (%s) and return (column names, rows)."""
+    conn = library_db()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            columns = [col[0] for col in cur.description]
+            return columns, cur.fetchall()
+    finally:
+        conn.close()
+
+
+def report(title, sql, note="", params=()):
+    columns, rows = run_select(sql, params)
+    return {"title": title, "note": note, "columns": columns, "rows": rows}
+
+
+def report_page(page_title, subtitle, sections):
+    return render_template(
+        "report.html",
+        page_title=page_title,
+        subtitle=subtitle,
+        sections=sections,
+        is_admin=is_admin(),
+    )
+
+
+# ---------- F2.1 Search books (WHERE, LIKE, BETWEEN) ----------
+@app.route("/search")
+def search_books():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    keyword = request.args.get("keyword", "").strip()
+    min_price = request.args.get("min_price", "").strip()
+    max_price = request.args.get("max_price", "").strip()
+    category_id = request.args.get("category_id", "").strip()
+    errors = []
+
+    low, high = 0.0, 99999999.99
+    try:
+        if min_price:
+            low = float(min_price)
+        if max_price:
+            high = float(max_price)
+    except ValueError:
+        errors.append("Prices must be numbers")
+    if low < 0 or high < 0:
+        errors.append("Prices must not be negative")
+    if low > high:
+        errors.append("The minimum price must not be larger than the maximum price")
+
+    sql = (
+        "SELECT b.book_id, b.title, a.name AS author, c.name AS category, b.price "
+        "FROM book b "
+        "JOIN author a ON b.author_id = a.author_id "
+        "JOIN category c ON b.category_id = c.category_id "
+        "WHERE b.title LIKE %s AND b.price BETWEEN %s AND %s"
+    )
+    params = [f"%{keyword}%", low, high]
+    if category_id.isdigit():
+        sql += " AND b.category_id = %s"
+        params.append(int(category_id))
+    else:
+        category_id = ""
+    sql += " ORDER BY b.price ASC"
+
+    rows = []
+    if not errors:
+        # placeholders: the text typed by the user is sent as data, never pasted into the SQL
+        _, rows = run_select(sql, params)
+    _, categories = run_select("SELECT category_id, name FROM category ORDER BY name")
+
+    return render_template(
+        "search.html",
+        rows=rows,
+        errors=errors,
+        categories=categories,
+        keyword=keyword,
+        min_price=min_price,
+        max_price=max_price,
+        category_id=category_id,
+        is_admin=is_admin(),
+    )
+
+
+# ---------- F2.2 Catalogue (JOIN) ----------
+@app.route("/catalogue")
+def catalogue():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    sections = [report(
+        "All books",
+        "SELECT b.book_id AS id, b.title, a.name AS author, p.name AS publisher, "
+        "c.name AS category, b.publish_year AS year, b.price "
+        "FROM book b "
+        "JOIN author a ON b.author_id = a.author_id "
+        "JOIN publisher p ON b.publisher_id = p.publisher_id "
+        "JOIN category c ON b.category_id = c.category_id "
+        "ORDER BY b.book_id",
+    )]
+    return report_page("Catalogue", "Every book with the names of its author, publisher and category.", sections)
+
+
+# ---------- F2.3 Reports (GROUP BY, HAVING) ----------
+@app.route("/reports")
+def reports():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    sections = [
+        report(
+            "Books and average price of each category",
+            "SELECT c.name AS category, COUNT(b.book_id) AS books, ROUND(AVG(b.price), 2) AS average_price "
+            "FROM category c LEFT JOIN book b ON b.category_id = c.category_id "
+            "GROUP BY c.category_id, c.name ORDER BY c.name",
+        ),
+        report(
+            "Authors who wrote at least 2 books",
+            "SELECT a.name AS author, COUNT(*) AS books "
+            "FROM author a JOIN book b ON b.author_id = a.author_id "
+            "GROUP BY a.author_id, a.name HAVING COUNT(*) >= 2 "
+            "ORDER BY books DESC, a.name",
+        ),
+        report(
+            "The whole library: total, smallest and largest price",
+            "SELECT SUM(price) AS total_price, MIN(price) AS smallest_price, "
+            "MAX(price) AS largest_price FROM book",
+        ),
+    ]
+    return report_page("Reports", "Numbers about the books of the library.", sections)
+
+
+# ---------- F2.4 Loans (JOIN, LEFT JOIN) ----------
+@app.route("/loans")
+def loans():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    sections = [
+        report(
+            "Loans not returned yet",
+            "SELECT l.loan_id, b.title AS book, m.name AS member, l.loan_date "
+            "FROM loan l "
+            "JOIN book b ON l.book_id = b.book_id "
+            "JOIN member m ON l.member_id = m.member_id "
+            "WHERE l.return_date IS NULL ORDER BY l.loan_date",
+        ),
+        report(
+            "Members who never borrowed a book",
+            "SELECT m.member_id, m.name, m.email "
+            "FROM member m LEFT JOIN loan l ON l.member_id = m.member_id "
+            "WHERE l.loan_id IS NULL",
+        ),
+        report(
+            "Books that were never borrowed",
+            "SELECT b.book_id, b.title "
+            "FROM book b LEFT JOIN loan l ON l.book_id = b.book_id "
+            "WHERE l.loan_id IS NULL",
+        ),
+    ]
+    return report_page("Loans", "Who has a book, who has never borrowed, and which books stay on the shelf.", sections)
+
+
+# ---------- F2.5 Most borrowed (GROUP BY, ORDER BY, LIMIT) ----------
+@app.route("/most-borrowed")
+def most_borrowed():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    sections = [
+        report(
+            "The 3 most borrowed books",
+            "SELECT b.title, COUNT(*) AS loans "
+            "FROM loan l JOIN book b ON l.book_id = b.book_id "
+            "GROUP BY b.book_id, b.title ORDER BY loans DESC, b.title LIMIT 3",
+        ),
+        report(
+            "The member with the most loans",
+            "SELECT m.name, COUNT(*) AS loans "
+            "FROM loan l JOIN member m ON l.member_id = m.member_id "
+            "GROUP BY m.member_id, m.name ORDER BY loans DESC, m.name LIMIT 1",
+        ),
+    ]
+    return report_page("Most borrowed", "The books and the member with the most loans.", sections)
+
+
+# ---------- F2.6 Authors and books (LEFT JOIN, JOIN) ----------
+@app.route("/authors-books")
+def authors_books():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    sections = [
+        report(
+            "Every author with the number of books",
+            "SELECT a.name AS author, COUNT(b.book_id) AS books "
+            "FROM author a LEFT JOIN book b ON b.author_id = a.author_id "
+            "GROUP BY a.author_id, a.name ORDER BY books DESC, a.name",
+            note="Authors with 0 books are included.",
+        ),
+        report(
+            "Books whose author and publisher come from the same country",
+            "SELECT b.title, a.name AS author, p.name AS publisher, a.country "
+            "FROM book b "
+            "JOIN author a ON b.author_id = a.author_id "
+            "JOIN publisher p ON b.publisher_id = p.publisher_id "
+            "WHERE a.country = p.country ORDER BY b.title",
+        ),
+    ]
+    return report_page("Authors and books", "Authors with their number of books, and local publishing.", sections)
 
 
 @app.errorhandler(403)

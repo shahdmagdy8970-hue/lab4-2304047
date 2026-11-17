@@ -64,6 +64,12 @@
         <div class="d-flex gap-2 flex-wrap">
             <a href="{{ url_for('books') }}" class="btn btn-outline-light btn-sm">Library</a>
             <a href="{{ url_for('books', favorites=1) }}" class="btn btn-outline-light btn-sm">My Favorites</a>
+            <a href="{{ url_for('search_books') }}" class="btn btn-outline-light btn-sm">Search</a>
+            <a href="{{ url_for('catalogue') }}" class="btn btn-outline-light btn-sm">Catalogue</a>
+            <a href="{{ url_for('reports') }}" class="btn btn-outline-light btn-sm">Reports</a>
+            <a href="{{ url_for('loans') }}" class="btn btn-outline-light btn-sm">Loans</a>
+            <a href="{{ url_for('most_borrowed') }}" class="btn btn-outline-light btn-sm">Most borrowed</a>
+            <a href="{{ url_for('authors_books') }}" class="btn btn-outline-light btn-sm">Authors</a>
             <a href="{{ url_for('todos') }}" class="btn btn-outline-light btn-sm">To-Do</a>
             {% if is_admin %}
             <a href="{{ url_for('admin_dashboard') }}" class="btn btn-gold btn-sm">Admin</a>
@@ -307,7 +313,7 @@
                                        value="{{ b.price }}" required>
 
                                 <label class="form-label small">Author</label>
-                                <select class="form-select mb-3" name="author_id" required>
+                                <select class="form-select mb-2" name="author_id" required>
                                     {% for a in authors %}
                                     <option value="{{ a.author_id }}"
                                         {% if a.author_id == b.author_id %}selected{% endif %}>
@@ -315,6 +321,30 @@
                                     </option>
                                     {% endfor %}
                                 </select>
+
+                                <label class="form-label small">Publisher</label>
+                                <select class="form-select mb-2" name="publisher_id" required>
+                                    {% for p in publishers %}
+                                    <option value="{{ p.publisher_id }}"
+                                        {% if p.publisher_id == b.publisher_id %}selected{% endif %}>
+                                        {{ p.name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+
+                                <label class="form-label small">Category</label>
+                                <select class="form-select mb-2" name="category_id" required>
+                                    {% for c in categories %}
+                                    <option value="{{ c.category_id }}"
+                                        {% if c.category_id == b.category_id %}selected{% endif %}>
+                                        {{ c.name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+
+                                <label class="form-label small">Publish year</label>
+                                <input class="form-control mb-3" name="publish_year" type="number"
+                                       min="1901" max="2155" value="{{ b.publish_year or '' }}">
 
                                 <button class="btn btn-library btn-sm w-100" type="submit">
                                     Save changes
@@ -356,7 +386,7 @@
             <div class="col-lg-6">
                 <div class="panel">
                     <h3>Add a New Book</h3>
-                    <p class="section-subtitle mb-4">Add a title, price and cover.</p>
+                    <p class="section-subtitle mb-4">Add a title, price, publisher, category and cover.</p>
 
                     <form method="POST" action="{{ url_for('books') }}"
                           enctype="multipart/form-data">
@@ -376,12 +406,35 @@
                                value="{{ form.get('price', '') }}" required>
 
                         <label class="form-label">Author</label>
-                        <select class="form-select mb-4" name="author_id" required>
+                        <select class="form-select mb-3" name="author_id" required>
                             <option value="">Choose an author</option>
                             {% for a in authors %}
-                            <option value="{{ a.author_id }}">{{ a.name }}</option>
+                            <option value="{{ a.author_id }}"
+                                {% if form.get('author_id') == a.author_id|string %}selected{% endif %}>{{ a.name }}</option>
                             {% endfor %}
                         </select>
+
+                        <label class="form-label">Publisher</label>
+                        <select class="form-select mb-3" name="publisher_id" required>
+                            <option value="">Choose a publisher</option>
+                            {% for p in publishers %}
+                            <option value="{{ p.publisher_id }}"
+                                {% if form.get('publisher_id') == p.publisher_id|string %}selected{% endif %}>{{ p.name }}</option>
+                            {% endfor %}
+                        </select>
+
+                        <label class="form-label">Category</label>
+                        <select class="form-select mb-3" name="category_id" required>
+                            <option value="">Choose a category</option>
+                            {% for c in categories %}
+                            <option value="{{ c.category_id }}"
+                                {% if form.get('category_id') == c.category_id|string %}selected{% endif %}>{{ c.name }}</option>
+                            {% endfor %}
+                        </select>
+
+                        <label class="form-label">Publish year (optional)</label>
+                        <input class="form-control mb-4" name="publish_year" type="number"
+                               min="1901" max="2155" value="{{ form.get('publish_year', '') }}">
 
                         <button class="btn btn-gold w-100" type="submit">+ Add book</button>
                     </form>
